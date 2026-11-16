@@ -4,7 +4,7 @@
 
 **微信界面美化 + 本地功能增强** · Xposed / LSPosed 模块
 
-![version](https://img.shields.io/badge/version-1.6.2-4A6CF7?style=flat-square)
+![version](https://img.shields.io/badge/version-1.6.3-4A6CF7?style=flat-square)
 ![platform](https://img.shields.io/badge/Android-12%20~%2016-3DDC84?style=flat-square&logo=android&logoColor=white)
 ![wechat](https://img.shields.io/badge/微信-8.0.72%20~%208.0.80-07C160?style=flat-square&logo=wechat&logoColor=white)
 ![size](https://img.shields.io/badge/APK-670%20KB-8A8F9A?style=flat-square)
@@ -12,7 +12,7 @@
 
 包名 `io.github.lex0m.lexin` · 作者 lex · 纯 Java · 无 Gradle
 
-[下载 APK](lexin-1.6.2.apk) · [功能一览](#功能一览) · [安装](#安装) · [兼容性](#兼容性) · [设计取舍](#设计取舍)
+[下载 APK](lexin-1.6.3.apk) · [功能一览](#功能一览) · [安装](#安装) · [兼容性](#兼容性) · [设计取舍](#设计取舍)
 
 </div>
 
@@ -161,6 +161,25 @@ sh tools/build-audio.sh --test   # 重编音频库并自测
 ---
 
 ## 更新日志
+
+### v1.6.3（2026-11-16）— 三个「面板说好了、实际不工作」的功能真修好
+
+只修三个用户亲口报的功能：**自动查看原图 / 骰子·猜拳 / 撤回标记**。
+三个的症状完全一样：`armed=1`（hook 装上了）、`hits=0`（回调一次没被调用）。
+
+- **自动查看原图**：旧逻辑只在 `Activity.onResume` 时才开始找按钮，而 8.0.80 在 App 内部
+  点开图片**不会触发 resume**（图片预览是在当前页面换视图）⇒ 正常点图永不扫描、
+  从别的 App 切回来才生效。改成页面停留期间持续观察（600ms 一轮）。真机 `hits=10`。
+- **骰子/猜拳**：三个 bug 叠加 —— ① 判定靠第 4 个参数里的 `IEmojiInfo`，8.0.80 那个参数
+  变成了 Kotlin lambda（只有 int 字段）⇒ 永远判定不是游戏、框从不弹；② 同签名的入口在
+  8.0.80 有 14 处，代码只挂了 1 处；③ 放行时用静态字段 `panelMethod`，挂多了之后它指向的是
+  最后一个挂上的而不是这次被拦的那个 ⇒ 选完没反应。改成看 kind id（429=骰子）+ 全族挂载
+  + `param.method`。真机 `hits=2`，弹框且能投出去。
+- **撤回标记**：旧逻辑「绑定器挂成功就不挂适配器兜底」，而 `jo.b#h` 在 8.0.80 能挂上却
+  一次没被调用；适配器那条路又按名字找 `onBindViewHolder`（已改名成 `O`）。
+  改成两条路都挂 + 按形状认 ViewHolder。真机 `hits=52`，标签正常出现。
+- **诊断能力**：新增即时推送（2 秒节流），`status.txt` 现在能看到扫了几轮、多少节点、
+  几个候选、为什么没点、最近进过哪些页面。下一轮排查不用再靠猜。
 
 ### v1.6.2（2026-11-16）— 全盘复审：自检复活 + 背景图通道 + 构建可复现
 
