@@ -169,7 +169,9 @@ sh tools/build-audio.sh --test   # 重编音频库并自测
 **两个阻断**
 - **自检机制自己就是坏的**：`SelfCheck` 用 `getDeclaredMethod("pulse")` 找方法，但 R8 把
   `pulse` 改名成了 `le` ⇒ 发布包里必然抛 `NoSuchMethodException`。真机证据：
-  `hook 活性 armed=1 / hits=0`，37 分钟一次没涨（自检 15 秒一次）。改成按**签名**找。
+  `hook 活性 armed=1 / hits=0`，37 分钟一次没涨（自检 15 秒一次）。改成按**签名**找之后
+  仍然失败 —— R8 把 `pulse()` **整个方法删了**（只往一个没人读的字段里 +1，判为死代码）。
+  最终：proguard 加 keep + tick 里读一次 `beat`。真机验证 `armed` 从 0 变 1。
 - **「重新自动适配」从来不扫**：`forget()` 先把待扫槽位清空，紧接着 `schedule()` 看到空表
   直接返回 —— 一次扫描都不发生，toast 却说"已开始"。
 
