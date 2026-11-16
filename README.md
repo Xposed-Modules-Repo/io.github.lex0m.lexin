@@ -4,15 +4,15 @@
 
 **微信界面美化 + 本地功能增强** · Xposed / LSPosed 模块
 
-![version](https://img.shields.io/badge/version-1.4.0-4A6CF7?style=flat-square)
+![version](https://img.shields.io/badge/version-1.6.2-4A6CF7?style=flat-square)
 ![platform](https://img.shields.io/badge/Android-12%20~%2016-3DDC84?style=flat-square&logo=android&logoColor=white)
-![wechat](https://img.shields.io/badge/微信-8.0.72%20~%208.0.79-07C160?style=flat-square&logo=wechat&logoColor=white)
-![size](https://img.shields.io/badge/APK-638%20KB-8A8F9A?style=flat-square)
+![wechat](https://img.shields.io/badge/微信-8.0.72%20~%208.0.80-07C160?style=flat-square&logo=wechat&logoColor=white)
+![size](https://img.shields.io/badge/APK-670%20KB-8A8F9A?style=flat-square)
 ![license](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 
 包名 `io.github.lex0m.lexin` · 作者 lex · 纯 Java · 无 Gradle
 
-[下载 APK](lexin-1.4.0.apk) · [功能一览](#功能一览) · [安装](#安装) · [兼容性](#兼容性) · [设计取舍](#设计取舍)
+[下载 APK](lexin-1.6.2.apk) · [功能一览](#功能一览) · [安装](#安装) · [兼容性](#兼容性) · [设计取舍](#设计取舍)
 
 </div>
 
@@ -26,7 +26,7 @@
 - **本地功能**：防撤回、朋友圈保留、去广告、自动原图、步数修改、一键转发……
   全部**在设备上完成**，不上传、不伪造、不改一条上行报文。
 
-一个 638 KB 的 APK，没有 Gradle 工程、没有第三方依赖、没有后台服务。
+一个 670 KB 的 APK，没有 Gradle 工程、没有第三方依赖、没有后台服务。
 
 ---
 
@@ -161,6 +161,45 @@ sh tools/build-audio.sh --test   # 重编音频库并自测
 ---
 
 ## 更新日志
+
+### v1.6.2（2026-11-16）— 全盘复审：自检复活 + 背景图通道 + 构建可复现
+
+这一版没有新功能，专修**「装上了、面板也说好了，但就是不工作」**。复审 62 条，修 21 条。
+
+**两个阻断**
+- **自检机制自己就是坏的**：`SelfCheck` 用 `getDeclaredMethod("pulse")` 找方法，但 R8 把
+  `pulse` 改名成了 `le` ⇒ 发布包里必然抛 `NoSuchMethodException`。真机证据：
+  `hook 活性 armed=1 / hits=0`，37 分钟一次没涨（自检 15 秒一次）。改成按**签名**找。
+- **「重新自动适配」从来不扫**：`forget()` 先把待扫槽位清空，紧接着 `schedule()` 看到空表
+  直接返回 —— 一次扫描都不发生，toast 却说"已开始"。
+
+**高危**
+- 长按菜单点击回调挑方法不校验返回类型就 `setResult(null)` ⇒ 挑中 `->boolean` 的重载会
+  拆箱 null，**崩微信**
+- 两处 `getOutline` 缺 try/catch：框架在渲染线程调，首次布局前 0×0 会抛异常漏进微信绘制
+- 卡片高度守卫是**空 if 块**：`WRAP_CONTENT` 被改成绝对像素，多行消息被截断
+- **背景图三处全走 `content://`**，而微信 targetSdk 34 且没有 `QUERY_ALL_PACKAGES`，
+  解析不到 authority ⇒ 面板选图必失败、背景画不出来。改成读写都走微信自己 `files/` 的点号文件
+- 老背景图迁移失败也照删 ⇒ 用户的图直接消失
+- 主题包 `FileReader` 泄漏（最终 "Too many open files"）；`image()` 复用同一个 Drawable 实例（错图）
+
+**构建可复现**
+以前每次构建用随机锚点密钥 ⇒ 同源码连编三次三个哈希，`VERSIONS.md` 记的哈希永远对不上。
+改成 `sha256(私盐 + 源码指纹)` 确定性派生。**源码不变 ⇒ 包完全一致**（已实测连跑两次相同）。
+
+### v1.6.0 / v1.6.1（2026-11-16）— 判据三态 + 死类根因
+
+- **「面板全绿、功能全哑」的根因**：微信 8.0.80 用 Tinker 热修，真正执行的类是补丁 dex 里那份；
+  用框架给的 `XC_LoadPackage.classLoader` 解析出来的是 base.apk 的**死类** —— 存在、能挂、
+  永远不触发。现在在 `Application.onCreate` / `Activity.onResume` 采纳运行时 ClassLoader 并重挂
+- `Features.app` 从 v1.2 起一直是 null（`Application.attach` 时刻 `getApplicationContext()` 还没赋值）
+  ⇒ 配置永远读不到、状态永远推不出去、全量扫描从没跑过。改用 `param.thisObject`
+- 面板判据从「一个布尔」改成三态：`未适配` / `已挂载未命中` / `已命中 N 次`，
+  快照带头部（版本 / 微信版本 / pid / 时间戳），超过 10 分钟标灰
+- 防撤回落到 `DbGuard`：直接从 WCDB 的 `update()` 里摘掉 `type`/`content`/`isSend` 三个字段
+  （`status=2` 实测是发送状态，按它拦会把消息发不出去）
+- 隐蔽收敛：`Bridge`/`Settings`/`MediaSaver` 从挂 `Activity.onResume` 改成生命周期回调（零 hook）；
+  `AntiRecall` 兜底不再挂 framework 的公共适配器入口
 
 ### v1.4.0（2026-10-28）— 两轮兼容性优化
 
